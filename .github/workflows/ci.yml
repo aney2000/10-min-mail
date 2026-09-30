@@ -53,3 +53,12 @@ jobs:
       - run: ruff format --check .
       - run: mypy
       - run: pytest --cov
+
+      # Fails the build on a known CVE in any installed package. One
+      # cell only: the dependency tree is the same everywhere, so
+      # running it four times just costs time.
+      - name: Audit dependencies for known vulnerabilities
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        run: |
+          pip install pip-audit
+          pip-audit --skip-editable

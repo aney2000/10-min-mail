@@ -1,5 +1,10 @@
 # 10 Minute Mail
 
+[![CI](https://github.com/aney2000/10-min-mail/actions/workflows/ci.yml/badge.svg)](https://github.com/aney2000/10-min-mail/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
+![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 A local, disposable email service — built for learning FastAPI, SMTP, TDD, and
 clean architecture. Runs entirely on your machine.
 
