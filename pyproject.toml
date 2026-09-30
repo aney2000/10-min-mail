@@ -20,6 +20,12 @@ dependencies = [
     "aiosmtpd>=1.4",
 ]
 
+# Installs a `ten-min-mail` command on PATH. Equivalent to
+# `python -m ten_min_mail`, but discoverable by someone who has the
+# package installed and no idea what the module is called.
+[project.scripts]
+ten-min-mail = "ten_min_mail.__main__:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",

@@ -1,0 +1,52 @@
+# Everything here is excluded from the build context.
+#
+# Without this file, `COPY . .` ships the virtualenv, the git history
+# and every __pycache__ to the build daemon: slow builds, a bloated
+# image, and a real risk of baking a local .env or database into a
+# layer where it lives forever.
+
+# Virtualenvs -- hundreds of MB, and platform-specific binaries that
+# would be wrong inside the image anyway.
+.venv/
+venv/
+env/
+
+# Version control
+.git/
+.gitignore
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data. A development database copied into the image would be
+# served to users of that image.
+*.db
+*.sqlite*
+data/
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Developer scripts with no role in the image.
+#
+# README.md is deliberately NOT listed here: pyproject.toml declares
+# `readme = "README.md"`, so the build stage cannot produce a wheel
+# without it. It costs a few KB in a stage that is discarded anyway,
+# and excluding it breaks the build outright -- which is exactly what
+# happened the first time this image was built.
+Makefile
+check.ps1
