@@ -86,9 +86,10 @@ def parse_message(
         logger.exception("could not parse message; storing it as empty")
         return ParsedMail(subject="", body="")
 
+    body = _normalise_newlines(_extract_body(message))
     return ParsedMail(
         subject=_extract_subject(message),
-        body=_truncate(_extract_body(message), max_body_chars),
+        body=_truncate(body, max_body_chars),
     )
 
 
@@ -267,6 +268,29 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + _TRUNCATION_NOTICE
+
+
+# --------------------------------------------------------------------------- #
+# Newline normalisation
+# --------------------------------------------------------------------------- #
+
+
+def _normalise_newlines(text: str) -> str:
+    r"""Convert wire line endings to plain '\n' and trim the tail.
+
+    SMTP mandates CRLF, so every body arrives with '\r\n'. Keeping the
+    carriage returns leaks a transport detail into the UI: browsers
+    render them as stray characters and string comparisons quietly stop
+    matching. Lone '\r' shows up too, from old systems.
+
+    Normalising once, here at the boundary, spares every consumer --
+    the API, the WebSocket frame, the eventual frontend -- from
+    stripping them independently and inevitably missing a case.
+
+    The trailing trim removes the empty final line senders routinely
+    append; internal blank lines, which carry meaning, are untouched.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n").rstrip()
 
 
 __all__ = ["DEFAULT_MAX_BODY_CHARS", "ParsedMail", "parse_message"]

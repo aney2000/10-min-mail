@@ -48,6 +48,7 @@ from .clock import SystemClock
 from .domain import Mailbox, Message
 from .repository import MailboxNotFoundError, SqliteMailboxRepository
 from .service import MailboxExpiredError, MailboxService
+from .smtp import SmtpServer
 from .websocket import ConnectionRegistry, attach_broadcaster
 
 #: WebSocket close code for "your request was refused on policy grounds"
@@ -57,6 +58,13 @@ _WS_CLOSE_POLICY_VIOLATION = 1008
 #: Domain we hand out addresses on. `.test` is reserved by RFC 6761 for
 #: testing, so it can never collide with a real internet domain.
 DEFAULT_MAIL_DOMAIN = "localhost.test"
+
+#: Default SMTP port.
+#:
+#: 1025, not 25: ports below 1024 require root on Unix, and running a
+#: mail server as root means any bug in it becomes a full system
+#: compromise. Production forwards 25 -> 1025 outside the process.
+DEFAULT_SMTP_PORT = 1025
 
 
 # --------------------------------------------------------------------------- #
@@ -189,6 +197,8 @@ def create_app(
     database_path: Path | str,
     mail_domain: str = DEFAULT_MAIL_DOMAIN,
     service: MailboxService | None = None,
+    smtp_host: str | None = None,
+    smtp_port: int = DEFAULT_SMTP_PORT,
 ) -> FastAPI:
     """Build a fully wired application.
 
@@ -204,6 +214,14 @@ def create_app(
             service's own event publisher during startup, so a service
             swapped in later would publish to a publisher nobody is
             listening to, and live updates would silently stop working.
+        smtp_host: Interface for the SMTP listener. None (the default)
+            disables SMTP entirely, which is what the HTTP test suite
+            wants -- binding a port in every test would be slow and
+            would collide between parallel runs.
+        smtp_port: Port for the SMTP listener. Defaults to 1025 rather
+            than 25 because ports below 1024 need root on Unix, and
+            running a mail server as root turns any bug in it into a
+            full system compromise.
 
     This function is the *composition root*: the single place where
     concrete implementations are chosen and wired together. Every other
@@ -248,13 +266,31 @@ def create_app(
         # it will later hand frames to from other threads.
         broadcaster = attach_broadcaster(active_service.events, registry)
 
+        # The SMTP listener runs on *this* event loop rather than in its
+        # own thread, so the mail receiver, the HTTP endpoints and the
+        # WebSocket broadcaster all share one loop and one service. Mail
+        # arriving on a socket therefore reaches a watching browser with
+        # no cross-loop hand-off.
+        smtp_server: SmtpServer | None = None
+        if smtp_host is not None:
+            smtp_server = SmtpServer(
+                service=active_service,
+                mail_domain=mail_domain,
+                host=smtp_host,
+                port=smtp_port,
+            )
+            await smtp_server.start()
+
         app.state.service = active_service
         app.state.connection = connection
         app.state.connections = registry
+        app.state.smtp_server = smtp_server
 
         yield  # ---- application runs ------------------------------------
 
         # ---- shutdown ---------------------------------------------------
+        if smtp_server is not None:
+            await smtp_server.stop()
         active_service.events.unsubscribe(broadcaster)
         if connection is not None:
             connection.close()

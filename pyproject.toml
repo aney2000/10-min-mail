@@ -15,6 +15,9 @@ dependencies = [
     # each one is here.
     "fastapi>=0.115",          # HTTP layer: routing, validation, OpenAPI
     "uvicorn[standard]>=0.30",  # ASGI server that actually runs the app
+    # SMTP receiver. asyncio-native, so it runs on the same event loop as
+    # FastAPI instead of needing its own thread.
+    "aiosmtpd>=1.4",
 ]
 
 [project.optional-dependencies]

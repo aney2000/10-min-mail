@@ -108,6 +108,27 @@ class TestPlainTextBody:
         )
         assert parse_message(raw).body == "Hello from base64"
 
+    def test_crlf_line_endings_are_normalised_to_lf(self) -> None:
+        # SMTP mandates CRLF on the wire, so every body arrives with
+        # '\r\n'. Storing the carriage returns leaks a wire-protocol
+        # detail into the UI, where browsers render them as stray
+        # characters and text comparisons stop matching. Normalise once,
+        # here, rather than making every consumer strip them.
+        raw = build("Subject: x", "line one\r\nline two\r\nline three")
+        assert parse_message(raw).body == "line one\nline two\nline three"
+
+    def test_lone_carriage_returns_are_normalised_too(self) -> None:
+        # Classic-Mac line endings still turn up in mail from old
+        # systems and badly written scripts.
+        raw = build("Subject: x", "line one\rline two")
+        assert parse_message(raw).body == "line one\nline two"
+
+    def test_trailing_whitespace_is_trimmed_from_the_body(self) -> None:
+        # Senders routinely append a trailing newline; showing an empty
+        # line at the end of every message is noise.
+        raw = build("Subject: x", "the content\r\n\r\n")
+        assert parse_message(raw).body == "the content"
+
     def test_honours_a_non_utf8_charset(self) -> None:
         # latin-1 is still out there. Decoding it as UTF-8 yields mojibake.
         raw = (
