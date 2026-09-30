@@ -64,6 +64,29 @@ def service(clock: FrozenClock, repository: SqliteMailboxRepository) -> MailboxS
 
 
 # --------------------------------------------------------------------------- #
+# Clock exposure
+# --------------------------------------------------------------------------- #
+
+
+class TestClockAccess:
+    def test_service_exposes_its_clock_reading(
+        self, service: MailboxService, clock: FrozenClock
+    ) -> None:
+        # Callers that need to render "seconds remaining" must agree with
+        # the service about what time it is. Exposing the reading (rather
+        # than letting the HTTP layer call datetime.now() itself) keeps the
+        # two from drifting, and keeps the FrozenClock override effective
+        # all the way out to the JSON response.
+        assert service.now() == clock.now()
+
+    def test_clock_reading_follows_the_injected_clock(
+        self, service: MailboxService, clock: FrozenClock
+    ) -> None:
+        clock.advance(timedelta(minutes=4))
+        assert service.now() == T0 + timedelta(minutes=4)
+
+
+# --------------------------------------------------------------------------- #
 # Creating mailboxes
 # --------------------------------------------------------------------------- #
 

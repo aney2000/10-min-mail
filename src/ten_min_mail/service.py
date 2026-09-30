@@ -24,6 +24,8 @@ global state.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from .address_generator import RandomAddressGenerator
 from .clock import Clock
 from .domain import MAX_LIFETIME, Mailbox, Message
@@ -63,6 +65,21 @@ class MailboxService:
         self._repository = repository
         self._clock = clock
         self._generator = address_generator
+
+    # ------------------------------------------------------------------ #
+    # Time
+    # ------------------------------------------------------------------ #
+
+    def now(self) -> datetime:
+        """The service's current time.
+
+        Exposed so callers that render time-derived values -- the HTTP
+        layer computing `remaining_seconds`, for instance -- read the
+        same clock the service does. If the web layer called
+        `datetime.now()` itself the two could disagree, and overriding
+        the clock in a test would stop reaching the rendered output.
+        """
+        return self._clock.now()
 
     # ------------------------------------------------------------------ #
     # Creation

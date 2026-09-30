@@ -10,6 +10,7 @@ the core is stable; the details (frameworks) are replaceable.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -111,11 +112,22 @@ class Mailbox:
         return now >= self.expires_at
 
     def remaining_seconds(self, now: datetime) -> int:
-        """Seconds left before expiry, clamped at 0 (never negative)."""
+        """Whole seconds left before expiry, rounded up, clamped at 0.
+
+        Rounds UP (ceiling) rather than truncating. A countdown that
+        truncates shows "9:59" the instant a mailbox is created, because
+        microseconds elapse between creation and rendering -- the timer
+        looks like it started late. With 599.9 seconds genuinely left,
+        600 is the honest answer.
+
+        Never negative, so callers do not have to wrap every call in
+        `max(0, ...)`. At or past expiry the answer is exactly 0; the
+        ceiling must not resurrect a dead mailbox as "1 second left".
+        """
         delta = (self.expires_at - now).total_seconds()
-        if delta < 0:
+        if delta <= 0:
             return 0
-        return int(delta)
+        return math.ceil(delta)
 
 
 # --------------------------------------------------------------------------- #

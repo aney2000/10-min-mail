@@ -95,6 +95,41 @@ class TestMailbox:
         )
         assert mailbox.remaining_seconds(now=T0 + timedelta(minutes=15)) == 0
 
+    def test_remaining_seconds_rounds_up_partial_seconds(self) -> None:
+        # A countdown must round UP. Truncating means a user who has just
+        # created a mailbox sees "9:59" because a few microseconds passed
+        # between creation and rendering -- the clock appears to start
+        # already-running. With 599.9 seconds genuinely left, "600" is the
+        # honest answer; "599" is not.
+        mailbox = Mailbox(
+            address="a@b.io",
+            window_started_at=T0,
+            expires_at=T0 + timedelta(minutes=10),
+        )
+        just_after = T0 + timedelta(microseconds=100)
+        assert mailbox.remaining_seconds(now=just_after) == 600
+
+    def test_remaining_seconds_rounds_up_mid_second(self) -> None:
+        mailbox = Mailbox(
+            address="a@b.io",
+            window_started_at=T0,
+            expires_at=T0 + timedelta(minutes=10),
+        )
+        # 1.5 seconds left should read as 2, not 1: there is still part of
+        # the second second remaining.
+        now = T0 + timedelta(minutes=10) - timedelta(milliseconds=1500)
+        assert mailbox.remaining_seconds(now=now) == 2
+
+    def test_remaining_seconds_is_zero_exactly_at_expiry(self) -> None:
+        # Rounding up must not resurrect an expired mailbox as "1 second
+        # left". At the boundary the answer is exactly zero.
+        mailbox = Mailbox(
+            address="a@b.io",
+            window_started_at=T0,
+            expires_at=T0 + timedelta(minutes=10),
+        )
+        assert mailbox.remaining_seconds(now=T0 + timedelta(minutes=10)) == 0
+
     @pytest.mark.parametrize(
         "bad_address",
         [
