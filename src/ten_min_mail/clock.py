@@ -25,9 +25,8 @@ directly.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
-
 
 # --------------------------------------------------------------------------- #
 # Interface
@@ -50,7 +49,7 @@ class SystemClock:
     """Reads the operating-system clock. Always returns UTC-aware time."""
 
     def now(self) -> datetime:
-        return datetime.now(tz=timezone.utc)
+        return datetime.now(tz=UTC)
 
 
 # --------------------------------------------------------------------------- #

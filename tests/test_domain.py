@@ -7,7 +7,7 @@ Design principle: `now` is always injected. The domain never reads the
 system clock. That keeps tests deterministic and fast.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -18,10 +18,9 @@ from ten_min_mail.domain import (
     Message,
 )
 
-
 # A fixed reference point used across tests. Using UTC everywhere avoids
 # a whole category of "works in my timezone" bugs.
-T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 # --------------------------------------------------------------------------- #
@@ -135,7 +134,10 @@ class TestMailbox:
 
     def test_maximum_lifetime_is_exactly_ten_minutes(self) -> None:
         # If someone changes MAX_LIFETIME by accident, this test screams.
-        assert MAX_LIFETIME == timedelta(minutes=10)
+        # SIM300 ("Yoda condition") is suppressed here: the constant under
+        # test belongs on the left. The rule exists for `if "admin" == role`,
+        # not for assertions whose subject is a named constant.
+        assert MAX_LIFETIME == timedelta(minutes=10)  # noqa: SIM300
 
 
 # --------------------------------------------------------------------------- #

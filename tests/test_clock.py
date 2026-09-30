@@ -8,14 +8,13 @@ microseconds instead of seconds.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from ten_min_mail.clock import Clock, FrozenClock, SystemClock
 
-
-T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 # --------------------------------------------------------------------------- #

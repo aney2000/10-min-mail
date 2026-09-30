@@ -24,13 +24,10 @@ global state.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from .address_generator import RandomAddressGenerator
 from .clock import Clock
 from .domain import MAX_LIFETIME, Mailbox, Message
 from .repository import SqliteMailboxRepository
-
 
 # --------------------------------------------------------------------------- #
 # Errors

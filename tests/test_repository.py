@@ -9,19 +9,18 @@ I/O, so tests stay fast and hermetic. Each test gets a fresh DB via the
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from ten_min_mail.domain import Mailbox, Message
 from ten_min_mail.repository import (
-    MailboxNotFoundError,
     MailboxAlreadyExistsError,
+    MailboxNotFoundError,
     SqliteMailboxRepository,
 )
 
-
-T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 # --------------------------------------------------------------------------- #

@@ -19,6 +19,8 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.11",
 ]
 
 [tool.setuptools.packages.find]
@@ -32,3 +34,61 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-ra -q --strict-markers"
 asyncio_mode = "auto"
+
+# --------------------------------------------------------------------------- #
+# Ruff -- linter + formatter (replaces flake8, isort, pyupgrade, black)
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+line-length = 88          # Black's default; a widely-agreed compromise.
+target-version = "py311"
+src = ["src", "tests"]    # Lets the import sorter know what is "first party".
+
+[tool.ruff.lint]
+# A curated set, not "everything". Enabling every rule produces noise, and
+# noise teaches you to ignore warnings -- which is worse than no linting.
+select = [
+    "E", "W",   # pycodestyle      -- basic style
+    "F",        # pyflakes         -- real bugs: unused vars, undefined names
+    "I",        # isort            -- import ordering
+    "B",        # flake8-bugbear   -- subtle bugs: mutable defaults, etc.
+    "UP",       # pyupgrade        -- modern Python idioms
+    "SIM",      # flake8-simplify  -- needless complexity
+    "RUF",      # ruff-specific    -- misc correctness
+    "ANN",      # flake8-annotations -- enforce type hints
+    "PT",       # flake8-pytest-style -- test quality
+    "C4",       # comprehensions   -- prefer comprehensions over map/filter
+    "RET",      # flake8-return    -- simplify return flows
+]
+ignore = [
+    "ANN401",   # Allow `Any` in the rare places it is genuinely correct.
+    "E501",     # Line length is handled by the formatter, not the linter.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files are allowed to be a bit looser:
+#   PT011 -- `pytest.raises(ValueError)` without `match=` is fine when the
+#            exception type alone is the thing under test.
+#   B017  -- same reasoning for broad `pytest.raises(Exception)` in the
+#            frozen-dataclass tests, where the exact type is an
+#            implementation detail of dataclasses.
+"tests/**/*.py" = ["PT011", "B017"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# --------------------------------------------------------------------------- #
+# Mypy -- static type checking
+# --------------------------------------------------------------------------- #
+# Strict mode from day one. Retrofitting strictness onto an untyped codebase
+# is painful; starting strict when the code is already annotated is free.
+# Mypy is also what actually *verifies* our Protocol conformance -- without
+# it, `Protocol` is only documentation.
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+# Show error codes so `# type: ignore[code]` can be precise rather than blanket.
+show_error_codes = true
+warn_unreachable = true
+
