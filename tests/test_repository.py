@@ -188,6 +188,23 @@ class TestMessagePersistence:
 # --------------------------------------------------------------------------- #
 
 
+class TestCounting:
+    def test_counts_zero_on_an_empty_database(
+        self, repo: SqliteMailboxRepository
+    ) -> None:
+        assert repo.count_mailboxes() == 0
+
+    def test_counts_stored_mailboxes(self, repo: SqliteMailboxRepository) -> None:
+        repo.add(make_mailbox("one@localhost.test"))
+        repo.add(make_mailbox("two@localhost.test"))
+        assert repo.count_mailboxes() == 2
+
+    def test_count_reflects_deletions(self, repo: SqliteMailboxRepository) -> None:
+        repo.add(make_mailbox("one@localhost.test"))
+        repo.delete("one@localhost.test")
+        assert repo.count_mailboxes() == 0
+
+
 class TestHousekeeping:
     def test_delete_expired_removes_only_expired_mailboxes(
         self, repo: SqliteMailboxRepository

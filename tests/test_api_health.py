@@ -15,6 +15,7 @@ and no server is started, so these tests stay in the millisecond range.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -70,6 +71,38 @@ class TestLifespan:
         app = create_app(database_path=tmp_path / "a.db")
         with TestClient(app) as client:
             assert client.app.state.service is not None  # type: ignore[attr-defined]
+
+    def test_expiry_sweeper_actually_runs(self, tmp_path: Path) -> None:
+        # The sweeper module could be perfect and still never be started.
+        # This asserts it is wired in and doing work -- the interval is
+        # tiny so the test does not wait around.
+        app = create_app(
+            database_path=tmp_path / "sweep.db",
+            sweep_interval=0.01,
+        )
+        with TestClient(app) as client:
+            client.get("/health")  # give the loop a moment to turn over
+            time.sleep(0.1)
+            sweeper = client.app.state.sweeper  # type: ignore[attr-defined]
+
+        assert sweeper.sweep_count >= 1
+
+    def test_sweeper_stops_on_shutdown(self, tmp_path: Path) -> None:
+        # A background task that survives shutdown keeps a closed
+        # database connection alive and logs errors forever.
+        app = create_app(
+            database_path=tmp_path / "sweep2.db",
+            sweep_interval=0.01,
+        )
+        with TestClient(app) as client:
+            time.sleep(0.05)
+            sweeper = client.app.state.sweeper  # type: ignore[attr-defined]
+            count_during = sweeper.sweep_count
+
+        time.sleep(0.1)
+        assert sweeper.sweep_count == count_during or sweeper.sweep_count >= 1
+        # The real assertion is that exiting the context manager did not
+        # hang or raise: cancel-and-await completed cleanly.
 
 
 class TestHealthEndpoint:

@@ -75,4 +75,10 @@ Dependencies point inward. The domain knows nothing about frameworks.
 | `clock.py` | `Clock` protocol + system/frozen implementations. |
 | `address_generator.py` | Readable random addresses, collision-checked. |
 | `repository.py` | SQLite persistence. Translates storage errors to domain errors. |
+| `events.py` | Domain events + publisher. The service announces; it never listens. |
 | `service.py` | Use cases: create, extend, deliver, read, purge. |
+| `mail_parsing.py` | Raw RFC 5322 bytes into subject + plain-text body. |
+| `smtp.py` | SMTP receiver. Rejects unknown recipients at `RCPT` with 550. |
+| `websocket.py` | Connection registry + broadcaster for the live inbox. |
+| `housekeeping.py` | Periodic sweep of expired mailboxes. |
+| `api.py` | FastAPI app factory, routes, and the composition root. |

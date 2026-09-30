@@ -214,6 +214,14 @@ class MailboxService:
         """
         return self._repository.delete_expired(now=self._clock.now())
 
+    def count_mailboxes(self) -> int:
+        """Total stored mailboxes, expired ones included.
+
+        Used by the health endpoint to prove the database answers
+        without mutating anything.
+        """
+        return self._repository.count_mailboxes()
+
     # ------------------------------------------------------------------ #
     # Private helpers
     # ------------------------------------------------------------------ #

@@ -163,6 +163,16 @@ class SqliteMailboxRepository:
             if cursor.rowcount == 0:
                 raise MailboxNotFoundError(address)
 
+    def count_mailboxes(self) -> int:
+        """How many mailboxes are stored, expired ones included.
+
+        Exists so the health endpoint can prove the database answers
+        without mutating anything: a monitoring probe must be safe to
+        call as often as anyone likes.
+        """
+        row = self._conn.execute("SELECT COUNT(*) FROM mailboxes").fetchone()
+        return int(row[0])
+
     def delete_expired(self, now: datetime) -> int:
         """Remove every mailbox whose expires_at is <= now.
 

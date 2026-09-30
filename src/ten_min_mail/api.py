@@ -29,6 +29,7 @@ endpoint builds on them.
 
 from __future__ import annotations
 
+import asyncio
 import random
 import sqlite3
 from collections.abc import AsyncIterator
@@ -46,6 +47,7 @@ from . import __version__
 from .address_generator import RandomAddressGenerator
 from .clock import SystemClock
 from .domain import Mailbox, Message
+from .housekeeping import DEFAULT_SWEEP_INTERVAL_SECONDS, ExpirySweeper
 from .repository import MailboxNotFoundError, SqliteMailboxRepository
 from .service import MailboxExpiredError, MailboxService
 from .smtp import SmtpServer
@@ -199,6 +201,7 @@ def create_app(
     service: MailboxService | None = None,
     smtp_host: str | None = None,
     smtp_port: int = DEFAULT_SMTP_PORT,
+    sweep_interval: float = DEFAULT_SWEEP_INTERVAL_SECONDS,
 ) -> FastAPI:
     """Build a fully wired application.
 
@@ -222,6 +225,7 @@ def create_app(
             than 25 because ports below 1024 need root on Unix, and
             running a mail server as root turns any bug in it into a
             full system compromise.
+        sweep_interval: Seconds between expiry sweeps.
 
     This function is the *composition root*: the single place where
     concrete implementations are chosen and wired together. Every other
@@ -281,14 +285,30 @@ def create_app(
             )
             await smtp_server.start()
 
+        # Reclaim storage from dead mailboxes on a schedule. Correctness
+        # does not depend on it -- the service refuses expired mailboxes
+        # whether or not their row is gone -- but without it the database
+        # grows forever and message content outlives the mailbox that
+        # held it, which for a disposable-mail service is a privacy
+        # problem rather than untidiness.
+        sweeper = ExpirySweeper(active_service, interval_seconds=sweep_interval)
+        sweeper_task = asyncio.create_task(sweeper.run())
+
         app.state.service = active_service
         app.state.connection = connection
         app.state.connections = registry
         app.state.smtp_server = smtp_server
+        app.state.sweeper = sweeper
 
         yield  # ---- application runs ------------------------------------
 
         # ---- shutdown ---------------------------------------------------
+        # Cancel AND await. A cancelled task that is never awaited stays
+        # pending at interpreter exit and asyncio complains about it;
+        # worse, any cleanup inside it never runs.
+        sweeper_task.cancel()
+        await sweeper_task
+
         if smtp_server is not None:
             await smtp_server.stop()
         active_service.events.unsubscribe(broadcaster)
@@ -363,12 +383,19 @@ def _register_routes(app: FastAPI) -> None:
     def health(service: ServiceDep) -> HealthResponse:
         """Report whether the service can actually serve traffic.
 
-        This deliberately performs a real database query. A health check
-        that returns a hardcoded "ok" is worse than none: it reports
-        healthy while the database is unreachable, and monitoring built
-        on it will stay silent during an outage.
+        Performs a real database read. A health check that returns a
+        hardcoded "ok" is worse than none: it reports healthy while the
+        database is unreachable, so monitoring built on it stays silent
+        through an outage.
+
+        It reads rather than writes. This endpoint used to call
+        purge_expired -- convenient before there was a sweeper, but it
+        made a monitoring probe load-bearing: expiry then happened only
+        as often as something happened to poll, and a health check with
+        side effects is a health check nobody can safely retry. The
+        background sweeper owns cleanup now; this only observes.
         """
-        service.purge_expired()  # cheap, and proves the DB is writable
+        service.count_mailboxes()  # cheap, and proves the DB answers
         return HealthResponse(status="ok", version=__version__)
 
     # ------------------------------------------------------------------ #
