@@ -66,10 +66,26 @@ class Mailbox:
 
     Immutable by design (`frozen=True`). To "extend" a mailbox we build a
     new instance rather than mutating an old one — see the service layer.
+
+    Fields
+    ------
+    address:
+        The mailbox address. Validated on construction.
+    window_started_at:
+        When the *current* validity window opened. On a freshly created
+        mailbox this is its creation time; after an extension it is the
+        moment of that extension. Naming it `created_at` would be a lie
+        once extensions exist, and a misleading field name is a bug
+        waiting to happen.
+    expires_at:
+        When the current window closes. The invariant
+        `expires_at - window_started_at <= MAX_LIFETIME` guarantees no
+        mailbox can ever be valid for more than ten minutes at a time,
+        no matter how the caller builds it.
     """
 
     address: str
-    created_at: datetime
+    window_started_at: datetime
     expires_at: datetime
 
     def __post_init__(self) -> None:
@@ -80,9 +96,9 @@ class Mailbox:
             raise InvalidEmailAddressError(
                 f"Not a valid email address: {self.address!r}"
             )
-        if self.expires_at < self.created_at:
-            raise ValueError("expires_at must be >= created_at")
-        if self.expires_at - self.created_at > MAX_LIFETIME:
+        if self.expires_at < self.window_started_at:
+            raise ValueError("expires_at must be >= window_started_at")
+        if self.expires_at - self.window_started_at > MAX_LIFETIME:
             raise ValueError(f"lifetime exceeds maximum of {MAX_LIFETIME}")
 
     # --- Time-dependent queries ---------------------------------------------

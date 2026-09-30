@@ -45,7 +45,7 @@ def repo() -> SqliteMailboxRepository:
 def make_mailbox(address: str = "abc@localhost.test") -> Mailbox:
     return Mailbox(
         address=address,
-        created_at=T0,
+        window_started_at=T0,
         expires_at=T0 + timedelta(minutes=10),
     )
 
@@ -109,14 +109,14 @@ class TestMailboxPersistence:
     def test_replace_updates_expiry(self, repo: SqliteMailboxRepository) -> None:
         # Mailboxes are immutable in the domain, so "extending" one means
         # constructing a new instance and asking the repo to replace the row.
-        # We move created_at forward too, so the new mailbox still respects
+        # We move window_started_at forward too, so the new mailbox still respects
         # the 10-minute MAX_LIFETIME invariant.
         original = make_mailbox()
         repo.add(original)
 
         extended = Mailbox(
             address=original.address,
-            created_at=T0 + timedelta(minutes=5),
+            window_started_at=T0 + timedelta(minutes=5),
             expires_at=T0 + timedelta(minutes=15),
         )
         repo.replace(extended)
@@ -195,12 +195,12 @@ class TestHousekeeping:
     ) -> None:
         alive = Mailbox(
             address="alive@localhost.test",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         dead = Mailbox(
             address="dead@localhost.test",
-            created_at=T0 - timedelta(minutes=20),
+            window_started_at=T0 - timedelta(minutes=20),
             expires_at=T0 - timedelta(minutes=10),
         )
         repo.add(alive)

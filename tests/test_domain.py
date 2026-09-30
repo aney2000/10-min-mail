@@ -33,18 +33,18 @@ class TestMailbox:
     def test_created_mailbox_exposes_its_fields(self) -> None:
         mailbox = Mailbox(
             address="abc123@example.com",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         assert mailbox.address == "abc123@example.com"
-        assert mailbox.created_at == T0
+        assert mailbox.window_started_at == T0
         assert mailbox.expires_at == T0 + timedelta(minutes=10)
 
     def test_mailbox_is_frozen(self) -> None:
         # Immutability protects us from accidental state changes.
         mailbox = Mailbox(
             address="a@b.io",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         with pytest.raises(Exception):  # dataclasses raises FrozenInstanceError
@@ -53,7 +53,7 @@ class TestMailbox:
     def test_is_not_expired_before_expiry(self) -> None:
         mailbox = Mailbox(
             address="a@b.io",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         assert mailbox.is_expired(now=T0 + timedelta(minutes=9)) is False
@@ -64,7 +64,7 @@ class TestMailbox:
         # future-you remembers the decision.
         mailbox = Mailbox(
             address="a@b.io",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         assert mailbox.is_expired(now=T0 + timedelta(minutes=10)) is True
@@ -72,7 +72,7 @@ class TestMailbox:
     def test_is_expired_after_expiry(self) -> None:
         mailbox = Mailbox(
             address="a@b.io",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         assert mailbox.is_expired(now=T0 + timedelta(minutes=11)) is True
@@ -80,7 +80,7 @@ class TestMailbox:
     def test_remaining_seconds_counts_down(self) -> None:
         mailbox = Mailbox(
             address="a@b.io",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         assert mailbox.remaining_seconds(now=T0) == 600
@@ -91,7 +91,7 @@ class TestMailbox:
         # write `max(0, mailbox.remaining_seconds(...))` everywhere.
         mailbox = Mailbox(
             address="a@b.io",
-            created_at=T0,
+            window_started_at=T0,
             expires_at=T0 + timedelta(minutes=10),
         )
         assert mailbox.remaining_seconds(now=T0 + timedelta(minutes=15)) == 0
@@ -111,7 +111,7 @@ class TestMailbox:
         with pytest.raises(InvalidEmailAddressError):
             Mailbox(
                 address=bad_address,
-                created_at=T0,
+                window_started_at=T0,
                 expires_at=T0 + timedelta(minutes=10),
             )
 
@@ -120,7 +120,7 @@ class TestMailbox:
         with pytest.raises(ValueError):
             Mailbox(
                 address="a@b.io",
-                created_at=T0,
+                window_started_at=T0,
                 expires_at=T0 - timedelta(seconds=1),
             )
 
@@ -129,7 +129,7 @@ class TestMailbox:
         with pytest.raises(ValueError):
             Mailbox(
                 address="a@b.io",
-                created_at=T0,
+                window_started_at=T0,
                 expires_at=T0 + MAX_LIFETIME + timedelta(seconds=1),
             )
 

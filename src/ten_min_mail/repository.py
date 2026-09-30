@@ -53,7 +53,7 @@ class MailboxAlreadyExistsError(ValueError):
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS mailboxes (
     address     TEXT PRIMARY KEY,
-    created_at  TEXT NOT NULL,
+    window_started_at  TEXT NOT NULL,
     expires_at  TEXT NOT NULL
 );
 
@@ -117,11 +117,11 @@ class SqliteMailboxRepository:
         try:
             with self._conn:
                 self._conn.execute(
-                    "INSERT INTO mailboxes(address, created_at, expires_at)"
+                    "INSERT INTO mailboxes(address, window_started_at, expires_at)"
                     " VALUES (?, ?, ?)",
                     (
                         mailbox.address,
-                        _dt_to_iso(mailbox.created_at),
+                        _dt_to_iso(mailbox.window_started_at),
                         _dt_to_iso(mailbox.expires_at),
                     ),
                 )
@@ -133,7 +133,7 @@ class SqliteMailboxRepository:
 
     def get(self, address: str) -> Mailbox:
         row = self._conn.execute(
-            "SELECT address, created_at, expires_at FROM mailboxes WHERE address = ?",
+            "SELECT address, window_started_at, expires_at FROM mailboxes WHERE address = ?",
             (address,),
         ).fetchone()
         if row is None:
@@ -144,9 +144,9 @@ class SqliteMailboxRepository:
         """Overwrite an existing mailbox's fields (used for extension)."""
         with self._conn:
             cursor = self._conn.execute(
-                "UPDATE mailboxes SET created_at = ?, expires_at = ? WHERE address = ?",
+                "UPDATE mailboxes SET window_started_at = ?, expires_at = ? WHERE address = ?",
                 (
-                    _dt_to_iso(mailbox.created_at),
+                    _dt_to_iso(mailbox.window_started_at),
                     _dt_to_iso(mailbox.expires_at),
                     mailbox.address,
                 ),
@@ -227,7 +227,7 @@ def _iso_to_dt(text: str) -> datetime:
 def _row_to_mailbox(row: sqlite3.Row) -> Mailbox:
     return Mailbox(
         address=row["address"],
-        created_at=_iso_to_dt(row["created_at"]),
+        window_started_at=_iso_to_dt(row["window_started_at"]),
         expires_at=_iso_to_dt(row["expires_at"]),
     )
 
