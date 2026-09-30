@@ -34,6 +34,7 @@ dev = [
     # blocks the suite forever. This turns hangs into ordinary failures with
     # a stack trace, which is how the WebSocket loop-binding bug was found.
     "pytest-timeout>=2.3",
+    "pytest-cov>=5.0",
     # fastapi.testclient drives the ASGI app in-process. Current Starlette
     # warns that the httpx 0.x backend is deprecated and wants httpx2, so we
     # pin the supported one rather than live with a warning we would learn
@@ -64,6 +65,34 @@ testpaths = ["tests"]
 # a timeout gives you a stack trace pointing at the blocked line.
 addopts = "-ra -q --strict-markers --timeout=30"
 asyncio_mode = "auto"
+
+# --------------------------------------------------------------------------- #
+# Coverage
+# --------------------------------------------------------------------------- #
+# Coverage measures which lines RAN, not whether they are correct -- a test
+# with no assertions reports 100% and proves nothing. It is therefore a
+# regression alarm, not a goal: the threshold exists to catch code added
+# without tests, and chasing the number for its own sake produces assertion-
+# free tests that make the metric lie.
+#
+# `# pragma: no cover` marks the handful of defensive branches that guard
+# against stdlib behaviour we cannot provoke from a test. Each one carries a
+# comment explaining why it is unreachable and why it stays. Deleting a
+# safety net to improve a percentage is the metric driving the code.
+[tool.coverage.run]
+source = ["ten_min_mail"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    # Protocol method bodies are `...` -- there is nothing to execute.
+    "^\\s*\\.\\.\\.$",
+    "if TYPE_CHECKING:",
+]
 
 # --------------------------------------------------------------------------- #
 # Ruff -- linter + formatter (replaces flake8, isort, pyupgrade, black)

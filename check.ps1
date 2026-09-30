@@ -31,7 +31,7 @@ function Invoke-Step {
 Invoke-Step "lint (ruff check)"     @("-m", "ruff", "check", ".")
 Invoke-Step "format (ruff format)"  @("-m", "ruff", "format", "--check", ".")
 Invoke-Step "typecheck (mypy)"      @("-m", "mypy")
-Invoke-Step "test (pytest)"         @("-m", "pytest")
+Invoke-Step "test + coverage"       @("-m", "pytest", "--cov")
 
 Write-Host ""
 Write-Host "All checks passed." -ForegroundColor Green

@@ -143,6 +143,31 @@ class TestServerLifecycle:
         await second.start()
         await second.stop()
 
+    async def test_stopping_a_server_that_never_started_is_harmless(
+        self, service: MailboxService
+    ) -> None:
+        # Shutdown paths run in `finally` blocks and during failed
+        # startups. Requiring stop() to know whether start() succeeded
+        # would turn every cleanup path into a conditional.
+        server = SmtpServer(
+            service=service,
+            mail_domain="localhost.test",
+            host="127.0.0.1",
+            port=free_port(),
+        )
+        await server.stop()
+
+    async def test_stopping_twice_is_harmless(self, service: MailboxService) -> None:
+        server = SmtpServer(
+            service=service,
+            mail_domain="localhost.test",
+            host="127.0.0.1",
+            port=free_port(),
+        )
+        await server.start()
+        await server.stop()
+        await server.stop()
+
 
 class TestDeliveryOverTheWire:
     async def test_message_reaches_the_mailbox(

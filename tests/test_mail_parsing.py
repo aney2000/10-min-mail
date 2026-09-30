@@ -289,6 +289,49 @@ class TestMalformedInput:
         )
         parse_message(raw)
 
+    def test_corrupt_base64_body_does_not_raise(self) -> None:
+        # A part that declares base64 and then carries something else is
+        # a real thing spam senders produce. The decode must fail softly:
+        # this is the `except` around get_payload(decode=True), and it is
+        # the difference between one bad message and a dead mail server.
+        raw = build(
+            "Subject: x\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n"
+            "Content-Transfer-Encoding: base64",
+            "!!!!! definitely not base64 !!!!!",
+        )
+        parse_message(raw)
+
+    def test_part_with_no_payload_does_not_raise(self) -> None:
+        # An empty part inside a multipart -- produced by some broken
+        # clients -- yields None rather than bytes.
+        raw = build(
+            'Subject: x\r\nContent-Type: multipart/mixed; boundary="B"',
+            "--B\r\nContent-Type: text/plain\r\n\r\n--B--\r\n",
+        )
+        parse_message(raw)
+
+    def test_attachment_only_message_yields_an_empty_body(self) -> None:
+        # Every part is an attachment, so there is no body text at all.
+        # The `return ""` at the end of _extract_body covers this, and
+        # the result must be empty rather than the attachment's bytes.
+        raw = build(
+            'Subject: x\r\nContent-Type: multipart/mixed; boundary="B"',
+            "--B\r\n"
+            "Content-Type: application/pdf\r\n"
+            'Content-Disposition: attachment; filename="a.pdf"\r\n'
+            "Content-Transfer-Encoding: base64\r\n"
+            "\r\n"
+            "JVBERi0xLjQK\r\n"
+            "--B--\r\n",
+        )
+        assert parse_message(raw).body == ""
+
+    def test_empty_html_part_is_survivable(self) -> None:
+        # _strip_html's early return for empty input.
+        raw = build("Subject: x\r\nContent-Type: text/html; charset=utf-8", "")
+        assert parse_message(raw).body == ""
+
 
 # --------------------------------------------------------------------------- #
 # Round-trip against messages built the way real clients build them

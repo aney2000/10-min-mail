@@ -17,19 +17,18 @@ Then open <http://localhost:8000>.
 Send a test message to the address it shows you:
 
 ```bash
-python -c "
-import smtplib
-from email.message import EmailMessage
-m = EmailMessage()
-m['From'] = 'someone@example.org'
-m['To']   = 'PASTE_THE_ADDRESS_HERE'
-m['Subject'] = 'Hello'
-m.set_content('It works.')
-smtplib.SMTP('localhost', 1025).send_message(m)
-"
+python send_test_mail.py PASTE_THE_ADDRESS_HERE
 ```
 
 It appears in the inbox immediately — no refresh, no polling.
+
+The helper has a few switches worth knowing:
+
+```bash
+python send_test_mail.py ADDRESS --unicode      # RFC 2047 encoded headers
+python send_test_mail.py ADDRESS --html         # multipart/alternative
+python send_test_mail.py ADDRESS --count 5      # a burst
+```
 
 | Port | Purpose |
 |---|---|
@@ -129,8 +128,18 @@ Individually:
   Free and open source.
 - **Mypy** in strict mode is what actually *verifies* the `Protocol` contracts
   the architecture relies on. Without it, a `Protocol` is only documentation.
-- **Pytest** with in-memory SQLite and a frozen clock: ~290 tests run in about
+- **Pytest** with in-memory SQLite and a frozen clock: ~300 tests run in about
   five seconds, so there is never a reason to skip them.
+- **Coverage** is measured with a 95% floor. It is a regression alarm, not a
+  goal — a test with no assertions reports 100% and proves nothing. The few
+  `# pragma: no cover` marks are defensive branches guarding against stdlib
+  behaviour that cannot be provoked from a test; each says so and says why it
+  stays.
+
+CI runs the same gate on every push, across Python 3.11–3.13 on Linux plus one
+Windows job, then builds the wheel, installs it into a clean environment, and
+builds and smoke-tests the container. A clean machine with a fresh install is
+the only honest answer to "does this work for someone who just cloned it?"
 
 ## Architecture
 
@@ -163,4 +172,48 @@ Dependencies point inward. The domain knows nothing about frameworks.
 | `smtp.py` | SMTP receiver. Rejects unknown recipients at `RCPT` with 550. |
 | `websocket.py` | Connection registry + broadcaster for the live inbox. |
 | `housekeeping.py` | Periodic sweep of expired mailboxes. |
+| `config.py` | Environment parsing and validation. |
 | `api.py` | FastAPI app factory, routes, and the composition root. |
+| `__main__.py` | Entry point: starts HTTP, SMTP and the sweeper together. |
+
+### How a message travels
+
+```
+  browser                server                     sender
+     |                      |                          |
+     |-- POST /api/mailboxes -->                        |
+     |<-- swift-otter-4271@localhost.test --            |
+     |                      |                          |
+     |-- WS /ws/{address} -->|                          |
+     |<----- connected ------|                          |
+     |                      |<---- SMTP: RCPT TO -------|
+     |                      |----- 250 OK ------------->|
+     |                      |<---- SMTP: DATA ----------|
+     |                      |                          |
+     |                      | parse -> store -> publish |
+     |<===== message frame ==|   (no polling)           |
+```
+
+The sender and the browser never know about each other. SMTP calls
+`service.deliver_message()`, which publishes a `MessageDelivered` event; a
+subscriber turns that into a WebSocket frame. Swapping either end — a different
+mail receiver, server-sent events instead of WebSockets — touches nothing in
+the service or the domain.
+
+### Design decisions worth knowing
+
+| Decision | Reasoning |
+|---|---|
+| Time, randomness and storage are injected | Tests are deterministic and run in milliseconds. `is_expired(now)` never reads the clock itself. |
+| Extension *resets* the window | `expires_at = now + 10min`, always. Exceeding the cap is structurally impossible rather than guarded against. |
+| Expiry is final | Reviving a dead address would let a new owner reclaim one already handed out. A security property, not strictness. |
+| `.test` TLD (RFC 6761) | Reserved for testing, so generated addresses cannot collide with real internet mail. |
+| Reject at `RCPT`, not `DATA` | The sender learns immediately. Accept-then-discard makes mail vanish while the sender believes it arrived. |
+| Envelope over headers | `MAIL FROM` is what the peer declared; `From:` is free text and trivially forged. Arrival time comes from our clock, never `Date:`. |
+| HTML stripped, never stored | The inbox renders in a browser. Storing attacker-controlled markup would be stored XSS. The frontend then uses `textContent` as a second, independent layer. |
+| SMTP on 1025, not 25 | Sub-1024 ports need root. A mail server running as root turns any bug into a host compromise. |
+| `410 Gone` for expired, `404` for unknown | 410 tells a client the address is dead for good and retrying is pointless. |
+
+## Licence
+
+MIT.

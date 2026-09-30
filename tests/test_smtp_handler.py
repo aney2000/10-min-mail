@@ -264,6 +264,50 @@ class TestMessageDelivery:
 
         assert reply.startswith("250")
 
+    async def test_an_unexpected_storage_error_does_not_lose_other_copies(
+        self, service: MailboxService
+    ) -> None:
+        # A disk error or locked database on ONE recipient must not cost
+        # the others their copy, and must not become a 5xx -- the sender
+        # would then retry a message we may already have stored, and the
+        # user would see it twice.
+        good = service.create_mailbox()
+        doomed = service.create_mailbox()
+
+        original = service.deliver_message
+
+        def explode_for_one(**kwargs: object) -> object:
+            if kwargs["recipient"] == doomed.address:
+                raise OSError("disk went away")
+            return original(**kwargs)  # type: ignore[arg-type]
+
+        service.deliver_message = explode_for_one  # type: ignore[assignment]
+
+        handler = MailboxSmtpHandler(service, mail_domain="localhost.test")
+        envelope = FakeEnvelope()
+        envelope.rcpt_tos = [doomed.address, good.address]
+
+        reply = await handler.handle_DATA(None, FakeSession(), envelope)
+
+        service.deliver_message = original  # type: ignore[method-assign]
+
+        assert reply.startswith("250")
+        assert len(service.get_messages(good.address)) == 1
+
+    async def test_missing_content_is_handled(
+        self, handler: MailboxSmtpHandler, service: MailboxService
+    ) -> None:
+        # aiosmtpd hands over None if DATA completed with nothing in it.
+        mailbox = service.create_mailbox()
+        envelope = FakeEnvelope()
+        envelope.content = None  # type: ignore[assignment]
+        envelope.rcpt_tos = [mailbox.address]
+
+        reply = await handler.handle_DATA(None, FakeSession(), envelope)
+
+        assert reply.startswith("250")
+        assert service.get_messages(mailbox.address)[0].subject == ""
+
     async def test_one_failing_recipient_does_not_lose_the_others(
         self, handler: MailboxSmtpHandler, service: MailboxService
     ) -> None:

@@ -98,6 +98,13 @@ class TestValidation:
         with pytest.raises(ValueError, match="TMM_HTTP_PORT"):
             load_settings({"TMM_HTTP_PORT": value})
 
+    @pytest.mark.parametrize("value", ["", "often", "60s"])
+    def test_rejects_a_non_numeric_sweep_interval(self, value: str) -> None:
+        # "60s" is the mistake someone actually makes, copying a Docker
+        # duration string into a plain-seconds variable.
+        with pytest.raises(ValueError, match="TMM_SWEEP_INTERVAL"):
+            load_settings({"TMM_SWEEP_INTERVAL": value})
+
     def test_rejects_a_non_positive_sweep_interval(self) -> None:
         # Zero would be a busy loop pinning a CPU core.
         with pytest.raises(ValueError, match="TMM_SWEEP_INTERVAL"):

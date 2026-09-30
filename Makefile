@@ -36,8 +36,21 @@ typecheck:
 test:
 	$(PY) -m pytest
 
+# Coverage is a regression alarm, not a goal -- see the note in
+# pyproject.toml. The threshold lives there so `pytest --cov` enforces
+# it identically here, in CI, and on a developer's machine.
+coverage:
+	$(PY) -m pytest --cov
+
 # The single gate. Runs in dependency order: cheap/fast checks first so
 # failures surface quickly, tests last because they are the slowest.
-check: lint typecheck test
+check: lint typecheck coverage
 	@echo ""
 	@echo "All checks passed."
+
+# Run the containerised stack. Requires Docker.
+docker-up:
+	docker compose up --build
+
+docker-down:
+	docker compose down

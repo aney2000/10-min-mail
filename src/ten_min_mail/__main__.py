@@ -47,8 +47,19 @@ def build_uvicorn_config(settings: Settings) -> uvicorn.Config:
     )
 
 
-def main() -> None:
-    """Load configuration, announce it, and run until interrupted."""
+def main() -> None:  # pragma: no cover
+    """Load configuration, announce it, and run until interrupted.
+
+    Excluded from coverage: this function blocks forever by design, so
+    a unit test can only call it by starting a subprocess -- at which
+    point the coverage tool, running in the parent, sees nothing.
+
+    It is still verified, just not by this measurement. Everything up
+    to binding a port lives in `build_uvicorn_config`, which is tested
+    directly, and the Docker verification starts the real process and
+    exercises the API and SMTP through it. The uncovered lines here are
+    logging calls and one `.run()`.
+    """
     settings = load_settings()
 
     logging.basicConfig(
@@ -69,5 +80,5 @@ def main() -> None:
     uvicorn.Server(build_uvicorn_config(settings)).run()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

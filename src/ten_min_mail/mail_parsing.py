@@ -82,7 +82,18 @@ def parse_message(
     """
     try:
         message = message_from_bytes(raw, policy=policy.default)
-    except Exception:
+    except Exception:  # pragma: no cover - see note below
+        # Excluded from coverage deliberately. `message_from_bytes` is
+        # extremely tolerant -- every malformed input we could construct
+        # still returns an object -- so this branch cannot be reached
+        # from a test without monkeypatching the stdlib, which would
+        # test the patch rather than the code.
+        #
+        # It stays because "tolerant today" is not "cannot ever raise",
+        # and the cost of being wrong is a mail server that a single
+        # crafted message can kill. Deleting a safety net to improve a
+        # coverage number is the metric driving the code, which is
+        # backwards.
         logger.exception("could not parse message; storing it as empty")
         return ParsedMail(subject="", body="")
 
@@ -113,9 +124,13 @@ def _extract_subject(message: Message) -> str:
         # and literal fragments a header may contain. str() then yields
         # the fully decoded text.
         decoded = str(make_header(decode_header(str(raw_subject))))
-    except Exception:
+    except Exception:  # pragma: no cover - defensive, see parse_message
         # A broken encoded word should cost us the decoding, not the
         # message. Fall back to the raw header text.
+        #
+        # Same reasoning as the guard in parse_message: decode_header
+        # tolerates every malformed header we can build, so this is
+        # unreachable from a test, and it stays anyway.
         logger.debug("undecodable Subject header; using it raw")
         decoded = str(raw_subject)
 
@@ -188,16 +203,16 @@ def _decode_part(part: Message) -> str:
     """
     try:
         payload = part.get_payload(decode=True)
-    except Exception:
+    except Exception:  # pragma: no cover - defensive, see parse_message
         logger.debug("could not decode transfer encoding for a part")
         return ""
 
-    if payload is None:
+    if payload is None:  # pragma: no cover - defensive, see parse_message
         # Some parts carry a string payload directly.
         content = part.get_payload()
         return content if isinstance(content, str) else ""
 
-    if not isinstance(payload, bytes):  # defensive; stdlib types are loose
+    if not isinstance(payload, bytes):  # pragma: no cover - stdlib types are loose
         return str(payload)
 
     charset = part.get_content_charset() or "utf-8"
