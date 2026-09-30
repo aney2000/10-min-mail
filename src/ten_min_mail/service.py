@@ -29,6 +29,7 @@ from datetime import datetime
 from .address_generator import RandomAddressGenerator
 from .clock import Clock
 from .domain import MAX_LIFETIME, Mailbox, Message
+from .events import EventPublisher, MessageDelivered
 from .repository import SqliteMailboxRepository
 
 # --------------------------------------------------------------------------- #
@@ -61,10 +62,26 @@ class MailboxService:
         repository: SqliteMailboxRepository,
         clock: Clock,
         address_generator: RandomAddressGenerator,
+        events: EventPublisher | None = None,
     ) -> None:
         self._repository = repository
         self._clock = clock
         self._generator = address_generator
+        # Defaulting to an empty publisher means callers that do not care
+        # about events (the test suite, a CLI, the SMTP path on its own)
+        # need not supply one, and delivery never depends on someone
+        # listening.
+        self._events = events if events is not None else EventPublisher()
+
+    @property
+    def events(self) -> EventPublisher:
+        """The publisher delivery events are announced on.
+
+        Exposed so the web layer can subscribe a WebSocket broadcaster
+        at startup. The service itself never learns what a subscriber
+        does with an event.
+        """
+        return self._events
 
     # ------------------------------------------------------------------ #
     # Time
@@ -177,6 +194,11 @@ class MailboxService:
             received_at=self._clock.now(),
         )
         self._repository.add_message(message)
+
+        # Announce only *after* the message is safely stored. An event
+        # means "this mail exists"; publishing before the write would let
+        # a listener show a message that a failed insert never created.
+        self._events.publish(MessageDelivered(message=message))
         return message
 
     # ------------------------------------------------------------------ #

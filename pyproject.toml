@@ -21,6 +21,10 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    # A hung test is far worse than a failing one: it tells you nothing and
+    # blocks the suite forever. This turns hangs into ordinary failures with
+    # a stack trace, which is how the WebSocket loop-binding bug was found.
+    "pytest-timeout>=2.3",
     # fastapi.testclient drives the ASGI app in-process. Current Starlette
     # warns that the httpx 0.x backend is deprecated and wants httpx2, so we
     # pin the supported one rather than live with a warning we would learn
@@ -39,7 +43,10 @@ where = ["src"]
 # asyncio_mode=auto lets us write `async def test_...` without decorators.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -q --strict-markers"
+# --timeout: no single test may hang the suite. WebSocket and SMTP tests
+# wait on I/O that can deadlock; a hang gives you no information, whereas
+# a timeout gives you a stack trace pointing at the blocked line.
+addopts = "-ra -q --strict-markers --timeout=30"
 asyncio_mode = "auto"
 
 # --------------------------------------------------------------------------- #

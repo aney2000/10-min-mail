@@ -37,7 +37,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi import Path as PathParam
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -48,6 +48,11 @@ from .clock import SystemClock
 from .domain import Mailbox, Message
 from .repository import MailboxNotFoundError, SqliteMailboxRepository
 from .service import MailboxExpiredError, MailboxService
+from .websocket import ConnectionRegistry, attach_broadcaster
+
+#: WebSocket close code for "your request was refused on policy grounds"
+#: (RFC 6455 section 7.4.1). Used when a mailbox is unknown or expired.
+_WS_CLOSE_POLICY_VIOLATION = 1008
 
 #: Domain we hand out addresses on. `.test` is reserved by RFC 6761 for
 #: testing, so it can never collide with a real internet domain.
@@ -183,13 +188,22 @@ def create_app(
     *,
     database_path: Path | str,
     mail_domain: str = DEFAULT_MAIL_DOMAIN,
+    service: MailboxService | None = None,
 ) -> FastAPI:
     """Build a fully wired application.
 
     Args:
         database_path: Where the SQLite file lives. Tests pass a
-            throwaway path; production passes a mounted volume.
+            throwaway path; production passes a mounted volume. Ignored
+            when `service` is supplied.
         mail_domain: The domain generated addresses belong to.
+        service: A pre-built service to use instead of constructing one.
+            Tests pass a service on a FrozenClock so they can advance
+            time. It must be supplied here rather than patched in
+            afterwards: the WebSocket broadcaster is attached to the
+            service's own event publisher during startup, so a service
+            swapped in later would publish to a publisher nobody is
+            listening to, and live updates would silently stop working.
 
     This function is the *composition root*: the single place where
     concrete implementations are chosen and wired together. Every other
@@ -201,31 +215,49 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # ---- startup ----------------------------------------------------
-        # check_same_thread=False: FastAPI serves sync endpoints from a
-        # thread pool, so the connection is touched from several threads.
-        # Safe here because SQLite serialises writes internally and our
-        # transactions are short.
-        connection = sqlite3.connect(str(database_path), check_same_thread=False)
+        # The registry of live WebSockets, and the broadcaster that turns
+        # delivery events into frames. The service publishes events; only
+        # the broadcaster knows those become WebSocket traffic.
+        registry = ConnectionRegistry()
+        connection: sqlite3.Connection | None = None
 
-        repository = SqliteMailboxRepository(connection)
-        repository.create_schema()
+        if service is not None:
+            active_service = service
+        else:
+            # check_same_thread=False: FastAPI serves sync endpoints from
+            # a thread pool, so the connection is touched from several
+            # threads. Safe here because SQLite serialises writes
+            # internally and our transactions are short.
+            connection = sqlite3.connect(str(database_path), check_same_thread=False)
+            repository = SqliteMailboxRepository(connection)
+            repository.create_schema()
 
-        app.state.service = MailboxService(
-            repository=repository,
-            clock=SystemClock(),
-            address_generator=RandomAddressGenerator(
-                domain=mail_domain,
-                # No seed: production randomness must be unpredictable.
-                rng=random.Random(),
-                checker=repository,
-            ),
-        )
+            active_service = MailboxService(
+                repository=repository,
+                clock=SystemClock(),
+                address_generator=RandomAddressGenerator(
+                    domain=mail_domain,
+                    # Production randomness must be unpredictable.
+                    rng=random.Random(),
+                    checker=repository,
+                ),
+            )
+
+        # Attach to whichever service we ended up with, from inside the
+        # running loop -- that is where the broadcaster captures the loop
+        # it will later hand frames to from other threads.
+        broadcaster = attach_broadcaster(active_service.events, registry)
+
+        app.state.service = active_service
         app.state.connection = connection
+        app.state.connections = registry
 
         yield  # ---- application runs ------------------------------------
 
         # ---- shutdown ---------------------------------------------------
-        connection.close()
+        active_service.events.unsubscribe(broadcaster)
+        if connection is not None:
+            connection.close()
 
     app = FastAPI(
         title="10 Minute Mail",
@@ -367,3 +399,59 @@ def _register_routes(app: FastAPI) -> None:
         """Return the inbox, oldest message first."""
         messages = service.get_messages(address)
         return [MessageResponse.from_domain(m) for m in messages]
+
+    # ------------------------------------------------------------------ #
+    # Live inbox
+    # ------------------------------------------------------------------ #
+
+    @app.websocket("/ws/{address}")
+    async def live_inbox(websocket: WebSocket, address: str) -> None:
+        """Push new mail to a watching client as it arrives.
+
+        Unlike HTTP, this connection stays open and the *server* speaks
+        first when mail shows up -- which is what makes the inbox live
+        without the browser polling.
+
+        Note the dependency is read from `app.state` rather than through
+        `Depends`: WebSocket routes cannot use HTTP exception handlers,
+        so validation and error signalling are handled explicitly below.
+        """
+        service: MailboxService = websocket.app.state.service
+        registry: ConnectionRegistry = websocket.app.state.connections
+
+        # Validate BEFORE accepting. Refusing the handshake outright is
+        # the honest signal for "this mailbox does not exist"; accepting
+        # and then closing would look to the client like a connection
+        # that worked and then broke.
+        try:
+            mailbox = service.get_mailbox(address)
+        except (MailboxNotFoundError, MailboxExpiredError):
+            await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
+            return
+
+        await websocket.accept()
+        registry.add(address, websocket)
+
+        try:
+            # Greet with the remaining time so the client can start its
+            # countdown immediately, without a second HTTP round-trip.
+            await websocket.send_json(
+                {
+                    "type": "connected",
+                    "address": mailbox.address,
+                    "remaining_seconds": mailbox.remaining_seconds(now=service.now()),
+                }
+            )
+
+            # We expect no client traffic; this await simply parks the
+            # coroutine until the peer disconnects. Without it the
+            # function would return and Starlette would close the socket
+            # immediately.
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            # Always deregister. A leaked registration is a slow memory
+            # leak and makes every later broadcast retry a dead socket.
+            registry.remove(address, websocket)

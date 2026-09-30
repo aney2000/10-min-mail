@@ -21,6 +21,7 @@ import pytest
 from ten_min_mail.address_generator import RandomAddressGenerator
 from ten_min_mail.clock import FrozenClock
 from ten_min_mail.domain import MAX_LIFETIME
+from ten_min_mail.events import MessageDelivered
 from ten_min_mail.repository import MailboxNotFoundError, SqliteMailboxRepository
 from ten_min_mail.service import MailboxExpiredError, MailboxService
 
@@ -61,6 +62,62 @@ def service(clock: FrozenClock, repository: SqliteMailboxRepository) -> MailboxS
         clock=clock,
         address_generator=generator,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Event publication
+# --------------------------------------------------------------------------- #
+
+
+class TestDeliveryEvents:
+    def test_delivery_publishes_an_event(
+        self, service: MailboxService, clock: FrozenClock
+    ) -> None:
+        # The service announces delivery so a live inbox can update
+        # without polling. It does not know or care that the listener is
+        # a WebSocket -- here the listener is a list.
+        received: list[MessageDelivered] = []
+        service.events.subscribe(received.append)
+
+        mailbox = service.create_mailbox()
+        service.deliver_message(
+            sender="alice@somewhere.io",
+            recipient=mailbox.address,
+            subject="Hello",
+            body="Hi",
+        )
+
+        assert len(received) == 1
+        assert received[0].recipient == mailbox.address
+        assert received[0].message.subject == "Hello"
+
+    def test_no_event_when_delivery_fails(self, service: MailboxService) -> None:
+        # An event means "this message is stored". Publishing one for a
+        # delivery that was rejected would make listeners show mail that
+        # does not exist.
+        received: list[MessageDelivered] = []
+        service.events.subscribe(received.append)
+
+        with pytest.raises(MailboxNotFoundError):
+            service.deliver_message(
+                sender="a@x.io",
+                recipient="ghost@localhost.test",
+                subject="s",
+                body="b",
+            )
+
+        assert received == []
+
+    def test_service_works_without_any_subscriber(
+        self, service: MailboxService
+    ) -> None:
+        # The SMTP path and the test suite both run with no web layer
+        # attached. Delivery must not depend on someone listening.
+        mailbox = service.create_mailbox()
+        service.deliver_message(
+            sender="a@x.io", recipient=mailbox.address, subject="s", body="b"
+        )
+        assert len(service.get_messages(mailbox.address)) == 1
 
 
 # --------------------------------------------------------------------------- #
