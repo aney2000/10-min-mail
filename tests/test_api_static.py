@@ -86,6 +86,42 @@ class TestApiIsNotShadowed:
             assert socket.receive_json()["type"] == "connected"
 
 
+class TestPackaging:
+    """The frontend must be inside the installed package.
+
+    `[tool.setuptools.package-data]` ships static/* in the wheel.
+    Without it setuptools installs only .py files, and the app imports,
+    starts, and returns 404 for every page -- a failure that appears
+    exclusively in a real install and never in editable-mode
+    development, because an editable install reads the source tree.
+
+    Asserting it here rather than in a CI job keeps it somewhere pytest
+    runs it, ruff lints it and mypy checks it. A check that only exists
+    in YAML is a check nobody maintains.
+    """
+
+    def test_static_files_live_inside_the_package(self) -> None:
+        import ten_min_mail
+
+        static_dir = Path(ten_min_mail.__file__).parent / "static"
+        shipped = sorted(p.name for p in static_dir.iterdir())
+
+        assert shipped == ["app.css", "app.js", "index.html"]
+
+    def test_package_data_is_declared(self) -> None:
+        # The assertion above passes in an editable install even when
+        # package-data is missing, because the source tree is right
+        # there. This one checks the declaration itself, which is what
+        # actually governs the wheel.
+        import tomllib
+
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+
+        package_data = config["tool"]["setuptools"]["package-data"]
+        assert "static/*" in package_data["ten_min_mail"]
+
+
 class TestPageWiring:
     """Minimal checks that the HTML and JS refer to the same things.
 

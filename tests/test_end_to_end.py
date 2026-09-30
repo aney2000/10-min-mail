@@ -27,7 +27,13 @@ from datetime import UTC, datetime
 from email.message import EmailMessage
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+
+# httpx2, not httpx. Commit 8 moved the test HTTP client to httpx2
+# because Starlette deprecated the httpx 0.x backend; importing plain
+# `httpx` here worked only because it was still lying around in a
+# developer virtualenv from before that switch. A clean install has no
+# such leftovers, which is exactly how CI caught it.
+from httpx2 import ASGITransport, AsyncClient
 
 from ten_min_mail.address_generator import RandomAddressGenerator
 from ten_min_mail.api import create_app

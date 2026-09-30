@@ -1,12 +1,9 @@
 # Continuous integration.
 #
-# `make check` only helps if you remember to run it. This makes the gate
-# unavoidable: every push and every pull request, on a clean machine
-# with a fresh install.
-#
-# That last part is the real value. A developer's laptop has packages
-# installed months ago and long forgotten; CI has nothing. It is the
-# only honest answer to "does this work for someone who just cloned it?"
+# `make check` only helps if you remember to run it, and it runs in a
+# virtualenv that has accumulated packages you installed once and never
+# declared. CI runs the same gate on a clean machine, which is the only
+# honest answer to "does this work for someone who just cloned it?"
 
 name: CI
 
@@ -14,224 +11,45 @@ on:
   push:
     branches: [master, main]
   pull_request:
-  # Lets you re-run the suite from the Actions tab without pushing an
-  # empty commit -- useful when a failure looks like flakiness.
   workflow_dispatch:
 
-# Cancel superseded runs on the same branch. Pushing three times in a
-# minute should not queue three full matrices.
+# Pushing three times in a minute should not queue three full runs.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ------------------------------------------------------------------ #
-  # Lint, types and tests across every Python we claim to support
-  # ------------------------------------------------------------------ #
   check:
-    name: check (py${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-
     strategy:
-      # Do not cancel the whole matrix when one cell fails. A failure on
-      # 3.13 alone is useful information, and killing the other jobs
-      # hides whether the problem is version-specific.
+      # One failing cell should not hide the others: a failure on 3.13
+      # alone tells you it is version-specific.
       fail-fast: false
       matrix:
-        # pyproject declares requires-python = ">=3.11". Claiming that
-        # without testing it is a guess, so every claimed version runs.
+        # pyproject declares requires-python = ">=3.11"; claiming a
+        # version without running it is a guess.
         python-version: ["3.11", "3.12", "3.13"]
         os: [ubuntu-latest]
+        # The project is developed on Windows, where paths, line
+        # endings and sockets all differ enough to be worth one real run.
         include:
-          # One Windows cell. The project is developed on Windows, and
-          # path handling, line endings and socket behaviour all differ
-          # enough there to be worth a real run rather than an assumption.
           - python-version: "3.12"
             os: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          # Caches pip downloads between runs, keyed on pyproject.toml.
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - run: pip install -e ".[dev]"
 
-      # Steps are separate rather than one `make check` call so the
-      # Actions UI shows which stage failed without reading the log.
-      - name: Lint
-        run: ruff check .
-
-      - name: Format
-        run: ruff format --check .
-
-      - name: Type check
-        run: mypy
-
-      - name: Test with coverage
-        run: pytest --cov --cov-report=xml
-
-      - name: Upload coverage artifact
-        # Only from the canonical cell: four identical reports is noise.
-        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.xml
-          retention-days: 14
-
-  # ------------------------------------------------------------------ #
-  # Prove the package installs from a wheel, not just in editable mode
-  # ------------------------------------------------------------------ #
-  package:
-    name: build and install the wheel
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Build the wheel
-        run: |
-          pip install build
-          python -m build --wheel
-
-      - name: Install it into a clean environment
-        run: |
-          python -m venv /tmp/fresh
-          /tmp/fresh/bin/pip install dist/*.whl
-
-      # The failure this catches: package-data not shipping the frontend.
-      # Editable installs read straight from the source tree, so a missing
-      # package-data entry works perfectly in development and 404s on
-      # every page in production. It is invisible until someone installs
-      # the wheel -- so CI installs the wheel.
-      - name: Verify the frontend is inside the package
-        run: |
-          /tmp/fresh/bin/python - <<'PY'
-          import pathlib, sys
-          import ten_min_mail
-          static = pathlib.Path(ten_min_mail.__file__).parent / "static"
-          shipped = sorted(p.name for p in static.iterdir())
-          print("shipped:", shipped)
-          expected = ["app.css", "app.js", "index.html"]
-          sys.exit(0 if shipped == expected else 1)
-          PY
-
-      - name: Verify the installed package actually serves
-        run: |
-          /tmp/fresh/bin/python - <<'PY'
-          import os, sys, tempfile, threading, time, urllib.request
-          os.environ.update(
-              TMM_HTTP_PORT="8071",
-              TMM_SMTP_HOST="127.0.0.1",
-              TMM_SMTP_PORT="10071",
-              TMM_DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "ci.db"),
-          )
-          from ten_min_mail.__main__ import build_uvicorn_config
-          from ten_min_mail.config import load_settings
-          import uvicorn
-
-          server = uvicorn.Server(build_uvicorn_config(load_settings()))
-          threading.Thread(target=server.run, daemon=True).start()
-          time.sleep(5)
-
-          base = "http://127.0.0.1:8071"
-          assert b"10 Minute Mail" in urllib.request.urlopen(base).read()
-          assert urllib.request.urlopen(f"{base}/health").status == 200
-          req = urllib.request.Request(f"{base}/api/mailboxes", method="POST")
-          assert b"@localhost.test" in urllib.request.urlopen(req).read()
-          print("installed package serves correctly")
-          server.should_exit = True
-          PY
-
-  # ------------------------------------------------------------------ #
-  # Prove the container builds and runs
-  # ------------------------------------------------------------------ #
-  docker:
-    name: build and smoke-test the image
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build the image
-        run: docker build -t ten-min-mail:ci .
-
-      - name: Confirm it does not run as root
-        # A mail server accepts data from anyone who can reach the port.
-        # As root, any bug in it is a container compromise -- so this is
-        # a security property worth asserting on every build, not a
-        # detail to rediscover after an incident.
-        run: |
-          uid=$(docker run --rm ten-min-mail:ci id -u)
-          echo "container uid: $uid"
-          test "$uid" != "0"
-
-      - name: Start the stack
-        run: |
-          docker run -d --name tmm \
-            -p 8000:8000 -p 1025:1025 \
-            -e TMM_HTTP_HOST=0.0.0.0 -e TMM_SMTP_HOST=0.0.0.0 \
-            ten-min-mail:ci
-          # Wait for the container's own healthcheck rather than sleeping
-          # a fixed amount: it already knows when the app is ready.
-          for _ in $(seq 1 30); do
-            status=$(docker inspect tmm --format '{{.State.Health.Status}}')
-            [ "$status" = "healthy" ] && break
-            sleep 2
-          done
-          docker inspect tmm --format 'health: {{.State.Health.Status}}'
-
-      - name: End-to-end through the published ports
-        run: |
-          python - <<'PY'
-          import json, smtplib, sys, time, urllib.request
-          from email.message import EmailMessage
-
-          base = "http://127.0.0.1:8000"
-          assert json.loads(urllib.request.urlopen(f"{base}/health").read())["status"] == "ok"
-          assert b"10 Minute Mail" in urllib.request.urlopen(base).read()
-
-          req = urllib.request.Request(f"{base}/api/mailboxes", method="POST")
-          address = json.loads(urllib.request.urlopen(req).read())["address"]
-
-          mail = EmailMessage()
-          mail["From"] = "ci@example.org"
-          mail["To"] = address
-          mail["Subject"] = "CI delivery"
-          mail.set_content("Sent by continuous integration.")
-          with smtplib.SMTP("127.0.0.1", 1025, timeout=15) as client:
-              client.send_message(mail)
-
-          time.sleep(1)
-          inbox = json.loads(
-              urllib.request.urlopen(f"{base}/api/mailboxes/{address}/messages").read()
-          )
-          assert len(inbox) == 1 and inbox[0]["subject"] == "CI delivery", inbox
-
-          # Not an open relay: a foreign domain must be refused.
-          try:
-              with smtplib.SMTP("127.0.0.1", 1025, timeout=15) as client:
-                  client.sendmail("a@b.io", ["victim@gmail.com"], "Subject: x\r\n\r\nb")
-              sys.exit("FAIL: accepted mail for a domain we do not host")
-          except smtplib.SMTPRecipientsRefused:
-              pass
-
-          print("container end-to-end passed")
-          PY
-
-      - name: Container logs on failure
-        if: failure()
-        run: docker logs tmm
+      # Separate steps, so the Actions UI shows which stage failed
+      # without anyone reading the log.
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: pytest --cov

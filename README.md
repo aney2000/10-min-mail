@@ -136,10 +136,16 @@ Individually:
   behaviour that cannot be provoked from a test; each says so and says why it
   stays.
 
-CI runs the same gate on every push, across Python 3.11–3.13 on Linux plus one
-Windows job, then builds the wheel, installs it into a clean environment, and
-builds and smoke-tests the container. A clean machine with a fresh install is
-the only honest answer to "does this work for someone who just cloned it?"
+CI runs exactly this gate on every push, across Python 3.11–3.13 on Linux plus
+one Windows job. Nothing more: anything worth asserting belongs in `tests/`,
+where pytest runs it and ruff and mypy check it, not in a YAML file nobody
+maintains.
+
+What CI adds over running `make check` yourself is the *clean machine*. A
+developer virtualenv accumulates packages installed once and never declared;
+tests then pass against a dependency the project does not actually require.
+That is not hypothetical here — it is how the `httpx`/`httpx2` mismatch was
+found, on the very first CI run.
 
 ## Architecture
 
