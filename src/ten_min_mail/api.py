@@ -36,11 +36,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi import Path as PathParam
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -323,6 +323,7 @@ def create_app(
         lifespan=lifespan,
     )
 
+    _register_security_headers(app)
     _register_exception_handlers(app)
     _register_routes(app)
 
@@ -350,6 +351,81 @@ def _mount_static_files(app: FastAPI) -> None:
         StaticFiles(directory=static_dir, html=True),
         name="static",
     )
+
+
+# --------------------------------------------------------------------------- #
+# Security headers
+# --------------------------------------------------------------------------- #
+
+#: Response headers applied to everything the app serves.
+#:
+#: The inbox renders text that arrived from a stranger over SMTP. Two
+#: defences already exist -- mail_parsing strips HTML before storing,
+#: and app.js inserts every field with textContent -- and these are the
+#: third, independent layer.
+#:
+#: Layering matters because the first two are code we maintain and might
+#: change. A Content-Security-Policy is enforced by the browser whatever
+#: our JavaScript does, so it still holds if someone later "simplifies"
+#: an innerHTML back in.
+_SECURITY_HEADERS: dict[str, str] = {
+    "Content-Security-Policy": "; ".join(
+        (
+            # Nothing loads from another origin.
+            "default-src 'self'",
+            # No 'unsafe-inline': our JS lives in app.js, so an injected
+            # <script> block simply does not execute. This is the single
+            # most valuable directive in the list.
+            "script-src 'self'",
+            # Styles do need inline, because the countdown toggles
+            # classes that drive animations. Inline *style* cannot
+            # execute code, so the risk is cosmetic.
+            "style-src 'self' 'unsafe-inline'",
+            # data: allows the inline SVG favicon in index.html.
+            "img-src 'self' data:",
+            # The live inbox needs its WebSocket. A policy that blocked
+            # it would break the app in a way no Python test can see.
+            "connect-src 'self' ws: wss:",
+            # Legacy plugin vectors with no use here.
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            # Stops the inbox being embedded and clickjacked.
+            "frame-ancestors 'none'",
+        )
+    ),
+    # Stops a browser guessing that a text/plain response is really HTML.
+    "X-Content-Type-Options": "nosniff",
+    # Redundant with frame-ancestors on modern browsers; kept for old ones.
+    "X-Frame-Options": "DENY",
+    # The mailbox address is the only secret here and it appears in URLs.
+    # Without this, following any outbound link would hand that address
+    # to the destination site in the Referer header.
+    "Referrer-Policy": "no-referrer",
+    # Nothing in this app uses these; switching them off shrinks the
+    # surface at no cost.
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+}
+
+
+def _register_security_headers(app: FastAPI) -> None:
+    """Attach the security headers to every response.
+
+    Middleware rather than per-route, because a policy applied to one
+    route is not a policy -- and error responses, which echo the
+    requested address back to the caller, need it just as much as
+    successful ones.
+    """
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next: Any) -> Response:
+        response: Response = await call_next(request)
+        response.headers.update(_SECURITY_HEADERS)
+        # Uvicorn advertises its name and version by default. Not a
+        # vulnerability, but free reconnaissance for anyone looking for
+        # a known bug in a specific release.
+        response.headers["Server"] = "10-minute-mail"
+        return response
 
 
 # --------------------------------------------------------------------------- #
