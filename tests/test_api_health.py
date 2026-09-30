@@ -157,6 +157,14 @@ class TestDependencyOverrideSeam:
             received.append(service)
             return {"ok": True}
 
+        # The probe route is added after create_app() has already
+        # mounted the static catch-all at "/", which matches everything.
+        # Routes are resolved in registration order, so without this the
+        # probe is shadowed and returns index.html. Moving it to the
+        # front is what a real late-registered route would have to do --
+        # and is precisely the hazard documented in _mount_static_files.
+        app.router.routes.insert(0, app.router.routes.pop())
+
         with TestClient(app) as client:
             assert client.get("/_probe").status_code == 200
 

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>10 Minute Mail</title>
+  <link rel="stylesheet" href="/app.css">
+  <!-- Inline SVG favicon: avoids a 404 in the console without adding a file. -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>&#9993;</text></svg>">
+</head>
+<body>
+
+  <main class="page">
+
+    <header class="header">
+      <h1>10 Minute Mail</h1>
+      <p class="tagline">A disposable address that deletes itself.</p>
+    </header>
+
+    <!-- The address, and the one action most people came here for. -->
+    <section class="card" aria-labelledby="address-heading">
+      <h2 id="address-heading" class="card-title">Your temporary address</h2>
+
+      <div class="address-row">
+        <!--
+          readonly rather than disabled: a disabled input cannot be
+          selected, so users could not drag-select the address as a
+          fallback if the copy button ever failed.
+        -->
+        <input
+          id="address"
+          class="address"
+          type="text"
+          readonly
+          value="generating…"
+          aria-label="Your temporary email address"
+        >
+        <button id="copy-button" class="button button-primary" type="button">
+          Copy
+        </button>
+      </div>
+
+      <!--
+        aria-live="polite" makes screen readers announce changes here
+        without interrupting whatever they are currently reading. This
+        element carries every transient message: copy confirmations,
+        errors, reconnection notices.
+      -->
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- Time remaining, and the control to reset it. -->
+    <section class="card" aria-labelledby="time-heading">
+      <h2 id="time-heading" class="card-title">Time remaining</h2>
+
+      <div class="countdown-row">
+        <span id="countdown" class="countdown" aria-live="off">--:--</span>
+        <button id="extend-button" class="button" type="button">
+          +10 minutes
+        </button>
+      </div>
+
+      <p class="hint">
+        Ten minutes is the maximum. The button resets the window back to
+        a full ten minutes; it does not stack.
+      </p>
+    </section>
+
+    <!-- The inbox. Filled over a WebSocket, never polled. -->
+    <section class="card" aria-labelledby="inbox-heading">
+      <h2 id="inbox-heading" class="card-title">Inbox</h2>
+      <ul id="inbox" class="inbox">
+        <li class="empty">No messages yet. They appear here instantly.</li>
+      </ul>
+    </section>
+
+    <footer class="footer">
+      <details>
+        <summary>How do I send mail to this address?</summary>
+        <p>
+          This server only accepts mail on your machine, so the public
+          internet cannot reach it. Send a test message with Python:
+        </p>
+        <pre><code>python -c "
+import smtplib
+from email.message import EmailMessage
+m = EmailMessage()
+m['From'] = 'someone@example.org'
+m['To'] = 'YOUR_ADDRESS_HERE'
+m['Subject'] = 'Hello'
+m.set_content('It works.')
+smtplib.SMTP('localhost', 1025).send_message(m)
+"</code></pre>
+      </details>
+    </footer>
+
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -40,6 +40,13 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Ship the frontend inside the package. Without this, setuptools
+# installs only .py files: the app imports fine, starts fine, and
+# returns 404 for every page -- a failure that appears exclusively in a
+# real install, never in editable-mode development.
+[tool.setuptools.package-data]
+ten_min_mail = ["static/*"]
+
 # --- pytest configuration ---
 # rootdir is auto-detected from this file.
 # testpaths tells pytest where to look, so `pytest` with no args works.

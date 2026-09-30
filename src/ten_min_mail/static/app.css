@@ -1,0 +1,322 @@
+/*
+ * Styles for the 10 Minute Mail UI.
+ *
+ * Hand-written, no framework. The whole page is three cards and a
+ * list; pulling in a CSS framework would ship far more than it saves
+ * and would hide what is actually happening.
+ *
+ * Custom properties are used for anything referenced more than once,
+ * so the palette can be changed in one place.
+ */
+
+:root {
+  --bg: #0f1115;
+  --card: #171a21;
+  --border: #272c36;
+  --text: #e6e8ec;
+  --muted: #9aa3b2;
+  --accent: #4f8cff;
+  --accent-hover: #6fa0ff;
+  --danger: #ff6b6b;
+  --success: #4ade80;
+  --radius: 10px;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+/* Respect an explicit light-mode preference rather than forcing dark. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e2e5ea;
+    --text: #1a1d23;
+    --muted: #5c6470;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 2rem 1rem 4rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.page {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- */
+/* Header                                                            */
+/* ---------------------------------------------------------------- */
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* ---------------------------------------------------------------- */
+/* Cards                                                             */
+/* ---------------------------------------------------------------- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.card-title {
+  margin: 0 0 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- */
+/* Address                                                           */
+/* ---------------------------------------------------------------- */
+
+.address-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.address {
+  flex: 1;
+  min-width: 0; /* lets the input shrink inside a flex row */
+  padding: 0.7rem 0.85rem;
+  font-family: var(--mono);
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.address:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Buttons                                                           */
+/* ---------------------------------------------------------------- */
+
+.button {
+  padding: 0.7rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* ---------------------------------------------------------------- */
+/* Status line                                                       */
+/* ---------------------------------------------------------------- */
+
+.status {
+  min-height: 1.3rem; /* reserve the space so the card never jumps */
+  margin: 0.7rem 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.status.success { color: var(--success); }
+.status.error   { color: var(--danger); }
+
+/* ---------------------------------------------------------------- */
+/* Countdown                                                         */
+/* ---------------------------------------------------------------- */
+
+.countdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.countdown {
+  font-family: var(--mono);
+  font-size: 2.4rem;
+  font-variant-numeric: tabular-nums; /* digits stop jittering as they change */
+  letter-spacing: -0.02em;
+}
+
+.countdown.warning { color: #fbbf24; }
+.countdown.critical {
+  color: var(--danger);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.45; }
+}
+
+/* Honour a user who has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .countdown.critical { animation: none; }
+}
+
+.hint {
+  margin: 0.8rem 0 0;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- */
+/* Inbox                                                             */
+/* ---------------------------------------------------------------- */
+
+.inbox {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inbox .empty {
+  padding: 1.5rem 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.message {
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.inbox .message:first-child {
+  border-top: none;
+}
+
+/* New mail slides in, so an arrival is noticeable without a sound. */
+.message.arriving {
+  animation: slide-in 0.3s ease-out;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message.arriving { animation: none; }
+}
+
+.message-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.message-sender {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-subject {
+  margin: 0.3rem 0;
+  font-weight: 600;
+}
+
+.message-body {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  /*
+   * pre-wrap keeps the sender's line breaks while still wrapping long
+   * lines; break-word stops a single long URL from widening the card.
+   */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* ---------------------------------------------------------------- */
+/* Footer                                                            */
+/* ---------------------------------------------------------------- */
+
+.footer {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.footer summary {
+  cursor: pointer;
+}
+
+.footer pre {
+  overflow-x: auto;
+  padding: 0.8rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.78rem;
+}
+
+/* ---------------------------------------------------------------- */
+/* Small screens                                                     */
+/* ---------------------------------------------------------------- */
+
+@media (max-width: 34rem) {
+  .address-row,
+  .countdown-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .countdown {
+    text-align: center;
+  }
+}

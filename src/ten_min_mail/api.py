@@ -41,6 +41,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi import Path as PathParam
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -324,7 +325,31 @@ def create_app(
 
     _register_exception_handlers(app)
     _register_routes(app)
+
+    # MUST be last. A StaticFiles mount at "/" matches every path, and
+    # FastAPI resolves routes in registration order -- mounted first, it
+    # silently swallows /api and /ws and the API starts returning
+    # index.html. The symptom looks like a frontend bug and costs an
+    # afternoon, so the ordering is pinned by tests in
+    # tests/test_api_static.py.
+    _mount_static_files(app)
     return app
+
+
+def _mount_static_files(app: FastAPI) -> None:
+    """Serve the browser UI from the package's static directory.
+
+    The directory is resolved relative to this file rather than the
+    working directory, so the app serves the same assets whether it is
+    started from the repo root, from inside a container, or by an
+    installed console script.
+    """
+    static_dir = Path(__file__).parent / "static"
+    app.mount(
+        "/",
+        StaticFiles(directory=static_dir, html=True),
+        name="static",
+    )
 
 
 # --------------------------------------------------------------------------- #
