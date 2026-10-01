@@ -44,6 +44,15 @@ def build_uvicorn_config(settings: Settings) -> uvicorn.Config:
         # Access logs are noise for a service whose traffic is one page
         # and a WebSocket; the application logs what matters.
         access_log=False,
+        # Stop uvicorn emitting its own `server: uvicorn` header. Our
+        # middleware sets one too, and Starlette appends rather than
+        # replaces -- so without this the response carries BOTH, and the
+        # version banner we meant to hide is sent anyway.
+        #
+        # This is invisible to TestClient, which surfaces only the last
+        # value of a repeated header. It took reading the raw bytes off
+        # a running container to see it.
+        server_header=False,
     )
 
 

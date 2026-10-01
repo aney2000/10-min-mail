@@ -96,6 +96,21 @@ class TestOtherSecurityHeaders:
         # looking for a known bug in a specific version.
         assert "uvicorn" not in client.get("/").headers.get("server", "").lower()
 
+    def test_only_one_server_header_is_sent(self, client: TestClient) -> None:
+        # Starlette APPENDS to the Server header rather than replacing
+        # it, so setting ours in middleware while uvicorn also sets its
+        # own produces two -- and the banner we meant to hide is sent
+        # anyway. `headers["server"]` hides this: it returns only the
+        # last value. get_list() shows every one.
+        #
+        # The bug was invisible in these tests and visible immediately
+        # in raw bytes off a running container, which is why this test
+        # exists in this shape. uvicorn is told server_header=False in
+        # __main__.py; this guards the application side.
+        values = client.get("/").headers.get_list("server")
+        assert len(values) == 1, f"expected one Server header, got {values}"
+        assert values[0] == "10-minute-mail"
+
 
 class TestHeadersApplyEverywhere:
     """A policy applied to one route is not a policy."""
