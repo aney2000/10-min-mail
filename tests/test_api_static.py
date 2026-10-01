@@ -140,6 +140,7 @@ class TestPageWiring:
         [
             "address",
             "copy-button",
+            "new-button",
             "countdown",
             "extend-button",
             "inbox",

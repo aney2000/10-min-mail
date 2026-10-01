@@ -26,11 +26,55 @@
 const elements = {
   address: document.getElementById("address"),
   copyButton: document.getElementById("copy-button"),
+  newButton: document.getElementById("new-button"),
   countdown: document.getElementById("countdown"),
   extendButton: document.getElementById("extend-button"),
   inbox: document.getElementById("inbox"),
   status: document.getElementById("status"),
 };
+
+/* ------------------------------------------------------------------ */
+/* Tab title                                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The whole point of this service is leaving the tab open while you
+ * wait for mail, which means the tab is usually in the background.
+ * Putting the countdown and the unread count in the title makes it
+ * useful without being looked at.
+ */
+const Title = {
+  BASE: "10 Minute Mail",
+  unread: 0,
+
+  update(remainingSeconds) {
+    const badge = this.unread > 0 ? `(${this.unread}) ` : "";
+    if (remainingSeconds === null || remainingSeconds <= 0) {
+      document.title = `${badge}${this.BASE}`;
+      return;
+    }
+    const minutes = String(Math.floor(remainingSeconds / 60)).padStart(2, "0");
+    const seconds = String(remainingSeconds % 60).padStart(2, "0");
+    document.title = `${badge}${minutes}:${seconds} — ${this.BASE}`;
+  },
+
+  markUnread() {
+    this.unread += 1;
+    this.update(Countdown.remaining);
+  },
+
+  clearUnread() {
+    this.unread = 0;
+    this.update(Countdown.remaining);
+  },
+};
+
+// Reading the inbox is what "read" means here: if the tab is focused,
+// the user is looking at it.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) Title.clearUnread();
+});
+window.addEventListener("focus", () => Title.clearUnread());
 
 /* ------------------------------------------------------------------ */
 /* Status line                                                         */
@@ -225,6 +269,8 @@ const Countdown = {
     elements.countdown.className = "countdown";
     if (left <= 30) elements.countdown.classList.add("critical");
     else if (left <= 120) elements.countdown.classList.add("warning");
+
+    Title.update(left);
   },
 };
 
@@ -280,6 +326,10 @@ const Inbox = {
 
     item.append(head, subject, body);
     elements.inbox.prepend(item);
+
+    // Only count it as unread if the tab is in the background. Mail
+    // that arrives while you are watching has already been seen.
+    if (document.hidden) Title.markUnread();
   },
 };
 
@@ -373,8 +423,30 @@ const App = {
 
     elements.copyButton.addEventListener("click", () => this.copyAddress());
     elements.extendButton.addEventListener("click", () => this.extend());
+    elements.newButton.addEventListener("click", () => this.startOver());
 
     await this.resumeOrCreate();
+  },
+
+  /**
+   * Abandon the current mailbox and generate a fresh one.
+   *
+   * Confirmed first, because the current address may already be in
+   * some other site's signup form, and there is no undo -- the old
+   * mailbox keeps running server-side but we forget the address.
+   */
+  async startOver() {
+    const hasMail = Inbox.count > 0;
+    const warning = hasMail
+      ? "Discard this mailbox and its messages, and generate a new address?"
+      : "Generate a new address? The current one will be forgotten.";
+
+    if (!window.confirm(warning)) return;
+
+    LiveFeed.disconnect();
+    Storage.clear();
+    Title.clearUnread();
+    await this.create();
   },
 
   /**
